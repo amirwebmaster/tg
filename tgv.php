@@ -1,5 +1,5 @@
 <?php
-$token=getenv('BTOKEN');
+$token=getenv('BTOKEN');echo 'hiii honey';
 define('BOT_TOKEN', $token);
 define('CHANNEL_ID', '625278344');
 define('MEDIA_GROUP_TIMEOUT', 5); // ثانیه
