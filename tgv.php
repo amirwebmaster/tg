@@ -1,5 +1,5 @@
 <?php
-$token=getenv('BTOKEN');echo 'hiii honey';
+$token=getenv('BTOKEN');echo '1';
 define('BOT_TOKEN', $token);
 define('CHANNEL_ID', '625278344');
 define('MEDIA_GROUP_TIMEOUT', 5); // ثانیه
@@ -38,10 +38,6 @@ function sendRequest6($method, $data = null)
           
      }
 function sendRequest($method, $parameters = []) {
-	$parameters=[
-	'chat_id'=>'625278344',
-	'text'=>'hii d'
-	];
     $ch = curl_init("https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $parameters);
@@ -53,8 +49,7 @@ function sendRequest($method, $parameters = []) {
     curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,false);
     $response = curl_exec($ch);
 				if(!$response){
-				$inf=curl_getinfo($ch);
-				file_put_contents('ch920.txt',curl_errno($ch).':::'.curl_error($ch).print_r($inf,true));
+
 			}
     $error = curl_error($ch);
     curl_close($ch);
