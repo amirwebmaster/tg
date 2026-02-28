@@ -1,42 +1,44 @@
 <?php
-$token=getenv('BTOKEN');echo '1';
+$token=getenv('BTOKEN');$chid=getenv('CHID');$tri=getenv('url');echo '1';
 define('BOT_TOKEN', $token);
-define('CHANNEL_ID', '625278344');
-define('MEDIA_GROUP_TIMEOUT', 5); // ثانیه
-define('DATA_FILE', __DIR__ . '/groups.json');
-function sendRequest6($method, $data = null) 
-     {         
-         $headers       = array(  
-			 'Content-Type: application/json',
-             'charset: utf-8' 
-         );
-         $fields_string = ""; 
-         //if (!is_null($data)) { 
-         //    $fields_string = http_build_query($data); 
-        // } 
-         $ch = curl_init(); 
-         curl_setopt($ch, CURLOPT_URL,"https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method); 
-         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); 
-         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); 
-         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); 
-         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
-         curl_setopt($ch, CURLOPT_POST, true); 
-         curl_setopt($ch, CURLOPT_POSTFIELDS, $fields_string); 
-          
-         $response     = curl_exec($ch); 
-         $code         = curl_getinfo($ch, CURLINFO_HTTP_CODE); 
-         $content_type = curl_getinfo($ch, CURLINFO_CONTENT_TYPE); 
-         $curl_errno   = curl_errno($ch); 
-         $curl_error   = curl_error($ch); 
-         if ($curl_errno) { 
-				$inf=curl_getinfo($ch);
-				file_put_contents('ch920.txt',curl_errno($ch).':::'.curl_error($ch).print_r($inf,true)); 
-        } 
-         $json_response = json_decode($response); 
-         curl_close($ch);
-    return $curl_error ? null : json_decode($response, true);
-          
-     }
+define('CHANNEL_ID',$chid);
+define('WAIT_TIME', 3); 
+processCompletedGroups();
+if(isset($_GET['check'])) exit;
+function processCompletedGroups(){
+
+    foreach(glob("storage/*.json") as $file){
+
+        $data=json_decode(file_get_contents($file),true);
+        if(!$data) continue;
+
+        if(time()-$data["time"] < WAIT_TIME)
+            continue;
+
+        sendMediaGroup($data["items"]);
+
+        unlink($file);
+    }
+}
+function sendMediaGroup($media){
+
+    foreach($media as $k=>$m)
+        if($k>0) unset($media[$k]["caption"]);
+$chat_id = CHANNEL_ID;
+    $ch=curl_init("https://api.telegram.org/bot" . BOT_TOKEN . "/sendMediaGroup");
+
+    curl_setopt_array($ch,[
+        CURLOPT_RETURNTRANSFER=>true,
+        CURLOPT_POST=>true,
+        CURLOPT_POSTFIELDS=>[
+            "chat_id"=>$chat_id,
+            "media"=>json_encode(array_values($media))
+        ]
+    ]);
+
+    curl_exec($ch);
+    curl_close($ch);
+}
 function sendRequest($method, $parameters = []) {
     $ch = curl_init("https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -85,71 +87,69 @@ function sendSingleToChannel($msg) {
             return null;
     }
 }
+function extractMedia($msg){
 
-// -------------------- مدیریت آلبوم‌ها --------------------
-function loadGroups() {
-    if (!file_exists(DATA_FILE)) return [];
-    $content = file_get_contents(DATA_FILE);
-    return json_decode($content, true) ?: [];
+    if(isset($msg["photo"]))
+        return [
+            "type"=>"photo",
+            "media"=>end($msg["photo"])["file_id"],
+            "caption"=>$msg["caption"] ?? ""
+        ];
+
+    if(isset($msg["video"]))
+        return [
+            "type"=>"video",
+            "media"=>$msg["video"]["file_id"],
+            "caption"=>$msg["caption"] ?? ""
+        ];
+
+    if(isset($msg["document"]))
+        return [
+            "type"=>"document",
+            "media"=>$msg["document"]["file_id"],
+            "caption"=>$msg["caption"] ?? ""
+        ];
+
+    return null;
 }
-
-function saveGroups($groups) {
-    file_put_contents(DATA_FILE, json_encode($groups, JSON_PRETTY_PRINT), LOCK_EX);
+function selfTrigger($tri){
+    $ch=curl_init($tri."?check=1");
+    curl_setopt_array($ch,[
+        CURLOPT_RETURNTRANSFER=>true,
+        CURLOPT_TIMEOUT=>2,
+        CURLOPT_NOSIGNAL=>1
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
 }
-
-function processExpiredGroups() {
-    $groups = loadGroups();
-    $now = time();
-    foreach ($groups as $id => &$group) {
-        if ($now - $group['last_update'] >= MEDIA_GROUP_TIMEOUT) {
-
-            usort($group['messages'], fn($a, $b) => $a['message_id'] <=> $b['message_id']);
-            $media = [];
-            foreach ($group['messages'] as $msg) {
-                $type = detectMessageType($msg);
-                $item = [
-                    'type' => $type,
-                    'media' => $type == 'photo' ? end($msg['photo'])['file_id'] : $msg['video']['file_id'],
-                ];
-                if (!empty($msg['caption'])) $item['caption'] = $msg['caption'];
-                $media[] = $item;
-            }
-            $result = sendRequest('sendMediaGroup', ['chat_id' => CHANNEL_ID, 'media' => $media]);
-            if ($result && ($result['ok'] ?? false)) {
-                unset($groups[$id]);
-            }
-        }
-    }
-    saveGroups($groups);
-}
-
-
-$update = json_decode(file_get_contents('php://input'), true);file_put_contents('up.txt',print_r($update,true));
+$update = json_decode(file_get_contents('php://input'), true);
 if (!isset($update['message'])) {
     http_response_code(200);
     exit;
 }
 
 $msg = $update['message'];
-if (!isset($msg['from']) || isset($msg['forward_date'])) {
-    http_response_code(200);
-    exit;
-}
 
 if (function_exists('fastcgi_finish_request')) {
     fastcgi_finish_request();
 }
 
 if (isset($msg['media_group_id'])) {
-    $groupId = $msg['media_group_id'];
-    $groups = loadGroups();
-    if (!isset($groups[$groupId])) {
-        $groups[$groupId] = ['messages' => [], 'last_update' => time()];
-    }
-    $groups[$groupId]['messages'][] = $msg;
-    $groups[$groupId]['last_update'] = time();
-    saveGroups($groups);
-    processExpiredGroups();
+@mkdir("storage");
+$gid=$msg["media_group_id"];
+$file="storage/$gid.json";
+$item=extractMedia($msg);if(!$item) exit;
+$data=[
+    "time"=>time(),
+    "items"=>[]
+];
+if(file_exists($file))
+    $data=json_decode(file_get_contents($file),true);
+
+$data["time"]=time();
+$data["items"][]=$item;
+
+file_put_contents($file,json_encode($data));selfTrigger($tri);
 } else {
     sendSingleToChannel($msg);
 }
