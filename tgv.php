@@ -3,7 +3,42 @@ $token=getenv('BTOKEN');$chid=getenv('CHID');$tri=getenv('url');echo '1';
 define('BOT_TOKEN', $token);
 define('CHANNEL_ID',$chid);
 define('WAIT_TIME', 3); 
+processCompletedGroups();
+if(isset($_GET['check'])) exit;
+function processCompletedGroups(){
 
+    foreach(glob("storage/*.json") as $file){
+
+        $data=json_decode(file_get_contents($file),true);
+        if(!$data) continue;
+
+        if(time()-$data["time"] < WAIT_TIME)
+            continue;
+
+        sendMediaGroup($data["items"]);
+
+        unlink($file);
+    }
+}
+function sendMediaGroup($media){
+
+    foreach($media as $k=>$m)
+        if($k>0) unset($media[$k]["caption"]);
+$chat_id = CHANNEL_ID;
+    $ch=curl_init("https://api.telegram.org/bot" . BOT_TOKEN . "/sendMediaGroup");
+
+    curl_setopt_array($ch,[
+        CURLOPT_RETURNTRANSFER=>true,
+        CURLOPT_POST=>true,
+        CURLOPT_POSTFIELDS=>[
+            "chat_id"=>$chat_id,
+            "media"=>json_encode(array_values($media))
+        ]
+    ]);
+
+    curl_exec($ch);
+    curl_close($ch);
+}
 function sendRequest($method, $parameters = []) {
     $ch = curl_init("https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -100,7 +135,21 @@ if (function_exists('fastcgi_finish_request')) {
 }
 
 if (isset($msg['media_group_id'])) {
+@mkdir("storage");
+$gid=$msg["media_group_id"];
+$file="storage/$gid.json";
+$item=extractMedia($msg);if(!$item) exit;
+$data=[
+    "time"=>time(),
+    "items"=>[]
+];
+if(file_exists($file))
+    $data=json_decode(file_get_contents($file),true);
 
+$data["time"]=time();
+$data["items"][]=$item;
+
+file_put_contents($file,json_encode($data));selfTrigger($tri);
 } else {
     sendSingleToChannel($msg);
 }
