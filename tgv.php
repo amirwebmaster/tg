@@ -149,7 +149,7 @@ if(file_exists($file))
 $data["time"]=time();
 $data["items"][]=$item;
 
-file_put_contents($file,json_encode($data));selfTrigger($tri);
+file_put_contents($file,json_encode($data));
 } else {
     sendSingleToChannel($msg);
 }
